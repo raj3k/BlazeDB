@@ -2,8 +2,13 @@ package main
 
 import (
 	"fmt"
+	"log"
 	"net"
-	"os"
+	"strings"
+	"sync"
+
+	"github.com/raj3k/BlazeDB/internal/proto"
+	"github.com/raj3k/BlazeDB/internal/utils"
 )
 
 const (
@@ -12,40 +17,126 @@ const (
 	CONN_TYPE = "tcp"
 )
 
-func main() {
-	// Listen for upcoming connections
-	l, err := net.Listen(CONN_TYPE, CONN_HOST+":"+CONN_PORT)
-	if err != nil {
-		fmt.Println("Error listening: ", err.Error())
-		os.Exit(1)
-	}
-	// Close the listener when the applications closes
-	defer l.Close()
+type RedisLiteServer struct {
+	data  map[string]string
+	mutex sync.Mutex
+}
 
-	fmt.Println("Listening on " + CONN_HOST + ":" + CONN_PORT)
-	for {
-		// Listen for an incoming connection
-		conn, err := l.Accept()
-		if err != nil {
-			fmt.Println("Error accepting: ", err.Error())
-			os.Exit(1)
-		}
-		// Handle connections in a new goroutine
-		go handleRequest(conn)
+func NewRedisLiteServer() *RedisLiteServer {
+	return &RedisLiteServer{
+		data: make(map[string]string),
 	}
 }
 
-func handleRequest(conn net.Conn) {
-	// Make a buffer to  hold incoming data.
-	buf := make([]byte, 1024)
-	// Read the incoming connection into buffer
-	reqLen, err := conn.Read(buf)
-	if err != nil {
-		fmt.Println("Error reading: ", err.Error())
+func (rls *RedisLiteServer) processCommand(cmd string) string {
+	parts := strings.Fields(cmd)
+	if len(parts) == 0 {
+		return ""
 	}
-	fmt.Println(reqLen)
-	// Send a response back to client contacting us.
-	conn.Write([]byte("Message received."))
-	// Close the connection when you're done with it
-	conn.Close()
+
+	rls.mutex.Lock()
+	defer rls.mutex.Unlock()
+
+	switch parts[0] {
+	case "get":
+		if len(parts) != 2 {
+			return "ERROR: Invalid argument for GET command"
+		}
+		val, found := rls.data[parts[1]]
+		if !found {
+			return "(nil)"
+		}
+		return "$3\r\n" + val
+	case "set":
+		if len(parts) != 3 {
+			return "ERROR: Invalid argument for SET command"
+		}
+		rls.data[parts[1]] = parts[2]
+		return "+OK"
+	case "exists":
+		if len(parts) != 2 {
+			return "ERROR: Invalid argument for GET command"
+		}
+		_, found := rls.data[parts[1]]
+
+		if !found {
+			return "0"
+		}
+		return "1"
+	case "ping":
+		return "+pong"
+	default:
+		return "ERROR: Unknown command"
+	}
+}
+
+func (rls *RedisLiteServer) handleConnection(conn net.Conn) {
+	defer conn.Close()
+
+	for {
+		buffer := make([]byte, 4096)
+		readLen, err := conn.Read(buffer)
+
+		if err != nil {
+			log.Println("Error reading from connection: ", err)
+			return
+		}
+
+		r := proto.NewReader(strings.NewReader(string(buffer[:readLen])))
+
+		cmd, err := r.ReadReply()
+
+		if err != nil {
+			log.Println("Error reading reply: ", err)
+		}
+
+		response := ""
+
+		if utils.IsSliceOfInterface(cmd) {
+			iSlice := cmd.([]interface{})
+			stringSlice := make([]string, len(iSlice))
+
+			for i, v := range iSlice {
+				// Convert each element to a string representation
+				stringSlice[i] = fmt.Sprintf("%v", v)
+			}
+
+			resultString := strings.Join(stringSlice, " ")
+
+			response = rls.processCommand(resultString)
+		}
+
+		if utils.IsInterface(cmd) {
+			response = rls.processCommand(cmd.(string))
+		}
+
+		_, err = conn.Write([]byte(response + "\r\n"))
+		if err != nil {
+			log.Println("Error writing to connection: ", err)
+			return
+		}
+	}
+}
+
+func main() {
+	rls := NewRedisLiteServer()
+
+	listener, err := net.Listen(CONN_TYPE, CONN_HOST+":"+CONN_PORT)
+
+	if err != nil {
+		log.Fatal("Error creating listener: ", err)
+	}
+	defer listener.Close()
+
+	log.Println("Redis-lite server is now listening on port ", CONN_PORT)
+
+	for {
+		conn, err := listener.Accept()
+
+		if err != nil {
+			log.Println("Error accepting connection: ", err)
+			continue
+		}
+		go rls.handleConnection(conn)
+	}
 }
