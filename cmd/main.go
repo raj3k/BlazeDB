@@ -7,6 +7,7 @@ import (
 	"strings"
 	"sync"
 
+	"github.com/raj3k/BlazeDB/blazedb"
 	"github.com/raj3k/BlazeDB/internal/proto"
 	"github.com/raj3k/BlazeDB/internal/utils"
 )
@@ -119,24 +120,39 @@ func (rls *RedisLiteServer) handleConnection(conn net.Conn) {
 }
 
 func main() {
-	rls := NewRedisLiteServer()
+	// rls := NewRedisLiteServer()
 
-	listener, err := net.Listen(CONN_TYPE, CONN_HOST+":"+CONN_PORT)
+	// listener, err := net.Listen(CONN_TYPE, CONN_HOST+":"+CONN_PORT)
 
+	// if err != nil {
+	// 	log.Fatal("Error creating listener: ", err)
+	// }
+	// defer listener.Close()
+
+	// log.Println("Redis-lite server is now listening on port ", CONN_PORT)
+
+	// for {
+	// 	conn, err := listener.Accept()
+
+	// 	if err != nil {
+	// 		log.Println("Error accepting connection: ", err)
+	// 		continue
+	// 	}
+	// 	go rls.handleConnection(conn)
+	// }
+
+	db, err := blazedb.New()
 	if err != nil {
-		log.Fatal("Error creating listener: ", err)
+		log.Fatal(err)
 	}
-	defer listener.Close()
 
-	log.Println("Redis-lite server is now listening on port ", CONN_PORT)
+	db.Coll().Set(blazedb.Map{
+		"asd": 1,
+	})
 
-	for {
-		conn, err := listener.Accept()
+	result, _ := db.Coll().Get(1)
 
-		if err != nil {
-			log.Println("Error accepting connection: ", err)
-			continue
-		}
-		go rls.handleConnection(conn)
-	}
+	fmt.Println(result)
+
+	db.DropDatabase("blaze")
 }
