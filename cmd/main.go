@@ -10,6 +10,7 @@ import (
 	"github.com/raj3k/BlazeDB/blazedb"
 	"github.com/raj3k/BlazeDB/internal/proto"
 	"github.com/raj3k/BlazeDB/internal/utils"
+	"go.etcd.io/bbolt"
 )
 
 const (
@@ -146,13 +147,25 @@ func main() {
 		log.Fatal(err)
 	}
 
-	db.Coll().Set(blazedb.Map{
-		"asd": 1,
+	k := []byte("1")
+	v := []byte("Hello World!")
+
+	db.Set(func(tx *bbolt.Tx) error {
+		b, err := tx.CreateBucketIfNotExists([]byte("test"))
+		if err != nil {
+			return err
+		}
+		return b.Put(k, v)
 	})
 
-	result, _ := db.Coll().Get(1)
+	db.Get(func(tx *bbolt.Tx) error {
+		b := tx.Bucket([]byte("test"))
+		v1 := b.Get([]byte(k))
+		fmt.Println(string(v1))
+		return nil
+	})
 
-	fmt.Println(result)
+	// fmt.Println(result)
 
 	db.DropDatabase("blaze")
 }

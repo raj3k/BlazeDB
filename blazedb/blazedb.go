@@ -43,6 +43,34 @@ func (b *BlazeDB) DropDatabase(name string) error {
 	return os.Remove(dbname)
 }
 
-func (b *BlazeDB) Coll() *Filter {
-	return NewFilter(b)
+func (b *BlazeDB) Set(fn func(*bolt.Tx) error) error {
+	t, err := b.db.Begin(true)
+	if err != nil {
+		return err
+	}
+
+	defer t.Rollback()
+
+	err = fn(t)
+	if err != nil {
+		_ = t.Rollback()
+		return err
+	}
+
+	return t.Commit()
+}
+
+func (b *BlazeDB) Get(fn func(*bolt.Tx) error) error {
+	t, err := b.db.Begin(false)
+	if err != nil {
+		return err
+	}
+	defer t.Rollback()
+
+	err = fn(t)
+	if err != nil {
+		_ = t.Rollback()
+		return err
+	}
+	return t.Rollback()
 }
