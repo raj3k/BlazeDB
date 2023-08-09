@@ -17,6 +17,7 @@ const (
 	CONN_HOST = "localhost"
 	CONN_PORT = "3333"
 	CONN_TYPE = "tcp"
+	BUCKET    = "default"
 )
 
 type RedisLiteServer struct {
@@ -151,7 +152,7 @@ func main() {
 	v := []byte("Hello World!")
 
 	db.Set(func(tx *bbolt.Tx) error {
-		b, err := tx.CreateBucketIfNotExists([]byte("test"))
+		b, err := tx.CreateBucketIfNotExists([]byte(BUCKET))
 		if err != nil {
 			return err
 		}
@@ -159,7 +160,7 @@ func main() {
 	})
 
 	db.Get(func(tx *bbolt.Tx) error {
-		b := tx.Bucket([]byte("test"))
+		b := tx.Bucket([]byte(BUCKET))
 		v1 := b.Get([]byte(k))
 		fmt.Println(string(v1))
 		return nil
